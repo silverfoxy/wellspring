@@ -1,4 +1,5 @@
 ---
+import '../../styles/global.css';
 import Layout from '../../layouts/Layout.astro';
 import BoardMessages from '../../components/BoardMessages.astro';
 import { getBoardByRecipientToken, listMessages } from '../../lib/db';
@@ -24,6 +25,132 @@ const isPrint = Astro.url.searchParams.get('print') === '1';
 ---
 
 <Layout title={board.title} bg={theme.bg} pattern={pageBgPattern} patternSize={pageBgSize} isPrint={isPrint} hideNav={true}>
+
+  <!-- Critical inline styles for recipient page (fallback if global CSS doesn't load) -->
+  <style>
+    /* Prevent horizontal overflow */
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow-x: hidden !important;
+      max-width: 100vw !important;
+      box-sizing: border-box !important;
+    }
+    *, *::before, *::after {
+      box-sizing: border-box !important;
+    }
+    .container {
+      max-width: 100% !important;
+      padding: 24px 16px !important;
+      margin: 0 auto !important;
+      overflow-x: hidden !important;
+    }
+    .splash {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      max-width: 100vw !important;
+      max-height: 100vh !important;
+      background: rgba(15, 23, 42, 0.35) !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      z-index: 999999 !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+      overflow: hidden !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    .splash.is-leaving {
+      transform: none !important;
+    }
+    .splash.is-visible {
+      opacity: 1 !important;
+      pointer-events: auto !important;
+    }
+    .splash-card {
+      position: relative !important;
+      z-index: 2 !important;
+      max-width: 90vw !important;
+      width: 100% !important;
+      margin: 24px !important;
+      padding: 24px !important;
+      text-align: center !important;
+      background: rgba(255,255,255,0.96) !important;
+      border-radius: 20px !important;
+      box-shadow: 0 24px 64px rgba(15, 23, 42, 0.35) !important;
+    }
+    .splash-pretitle {
+      margin: 0 0 8px !important;
+      font-size: 13px !important;
+      font-weight: 700 !important;
+      color: #6b7280 !important;
+    }
+    .splash-title {
+      margin: 0 0 8px !important;
+      font-size: 24px !important;
+      font-weight: 700 !important;
+      color: #1f2937 !important;
+    }
+    .splash-recipient {
+      margin: 0 0 24px !important;
+      color: #4b5563 !important;
+      font-size: 15px !important;
+    }
+    .btn {
+      display: inline-block !important;
+      padding: 12px 24px !important;
+      border-radius: 8px !important;
+      background: #4f46e5 !important;
+      color: white !important;
+      font-weight: 600 !important;
+      border: 0 !important;
+      cursor: pointer !important;
+      font-size: 16px !important;
+    }
+    .board-header {
+      max-width: 720px !important;
+      margin: 12px auto 28px !important;
+      padding: 18px 20px !important;
+      text-align: center !important;
+      background: rgba(255,255,255,0.45) !important;
+      border-radius: 14px !important;
+    }
+    .board-header h1 {
+      font-size: 28px !important;
+      margin: 0 !important;
+      font-weight: 600 !important;
+      word-wrap: break-word !important;
+    }
+    .grid {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 16px !important;
+      justify-content: center !important;
+      width: 100% !important;
+    }
+    .grid > * {
+      flex: 0 0 auto !important;
+      width: 100% !important;
+      max-width: min(280px, 100%) !important;
+    }
+    .note {
+      padding: 18px !important;
+      border-radius: 12px !important;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.08) !important;
+      word-wrap: break-word !important;
+      overflow-wrap: break-word !important;
+    }
+    .note img {
+      max-width: 100% !important;
+      height: auto !important;
+      border-radius: 8px !important;
+    }
+  </style>
+
   {!isPrint && (
     <div id="splash" class="splash" aria-hidden="true">
       <canvas id="splash-canvas" class="splash-canvas"></canvas>
@@ -47,39 +174,252 @@ const isPrint = Astro.url.searchParams.get('print') === '1';
     />
   </main>
   <canvas id="celebrate-canvas" class="celebrate-canvas" aria-hidden="true"></canvas>
+
+  <!-- Debug overlay will be created dynamically to avoid CSS dependency -->
 </Layout>
 
 <script is:inline define:vars={{ boardId: board.id }}>
-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const splash = document.getElementById('splash');
-  const openBtn = document.getElementById('splash-open');
-  const sessionKey = 'fb_splash_' + boardId;
-  const alreadySeen = sessionStorage.getItem(sessionKey) === '1';
+  // Check if debug mode is enabled
+  const isDebugMode = new URLSearchParams(window.location.search).get('debug') === '1';
+  let debugOverlay = null;
+  let debugLogs = null;
 
-  if (!splash || alreadySeen || reduced) {
-    splash?.remove();
-    if (!reduced) requestAnimationFrame(() => burstConfetti(120, 1.0));
-  } else {
-    splash.classList.add('is-visible');
-    // Start ambient confetti behind the splash card.
-    ambientConfetti();
+  // Create debug overlay dynamically with inline styles (doesn't depend on external CSS)
+  if (isDebugMode) {
+    debugOverlay = document.createElement('div');
+    debugOverlay.id = 'debug-overlay';
+    // Use inline styles that will work even if CSS doesn't load
+    debugOverlay.setAttribute('style', 'display:block !important; position:fixed !important; bottom:0 !important; left:0 !important; right:0 !important; max-height:50vh !important; overflow-y:auto !important; background:#000 !important; color:#0f0 !important; font-family:monospace !important; font-size:11px !important; padding:12px !important; z-index:99999 !important; line-height:1.4 !important; border-top:2px solid #0f0 !important;');
+
+    const header = document.createElement('div');
+    header.innerHTML = '<strong style="color:#0f0;">🐛 Debug Console</strong><button onclick="this.parentElement.parentElement.remove()" style="background:#000; border:1px solid #0f0; color:#0f0; padding:4px 8px; float:right; cursor:pointer;">Close</button>';
+    header.style.marginBottom = '8px';
+    header.style.borderBottom = '1px solid #0f0';
+    header.style.paddingBottom = '4px';
+
+    debugLogs = document.createElement('div');
+    debugLogs.id = 'debug-logs';
+
+    debugOverlay.appendChild(header);
+    debugOverlay.appendChild(debugLogs);
+    document.body.appendChild(debugOverlay);
   }
 
-  openBtn?.addEventListener('click', () => {
-    sessionStorage.setItem(sessionKey, '1');
-    splash.classList.add('is-leaving');
-    setTimeout(() => {
-      splash.remove();
-      burstConfetti(180, 1.2);
-    }, 600);
-  });
+  // Debug logging for mobile issues
+  const debug = (msg, data) => {
+    const logEntry = '[' + new Date().toLocaleTimeString() + '] ' + msg + (data ? ': ' + JSON.stringify(data) : '');
+    console.log('[Recipient Page]', msg, data || '');
 
-  // -------- Vanilla canvas confetti --------
-  function burstConfetti(count, intensity) {
-    const cvs = document.getElementById('celebrate-canvas');
-    if (!cvs) return;
-    const ctx = cvs.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
+    // Show in debug overlay if enabled
+    if (isDebugMode && debugLogs) {
+      const line = document.createElement('div');
+      line.textContent = logEntry;
+      line.style.marginBottom = '4px';
+      line.style.color = '#0f0';
+      debugLogs.appendChild(line);
+      // Auto-scroll to bottom
+      if (debugOverlay) debugOverlay.scrollTop = debugOverlay.scrollHeight;
+    }
+  };
+
+  try {
+    // Check if CSS loaded
+    const testEl = document.querySelector('.splash');
+    const styles = testEl ? window.getComputedStyle(testEl) : null;
+    const splashPosition = styles ? styles.position : 'unknown';
+    const splashDisplay = styles ? styles.display : 'unknown';
+
+    // Check for stylesheets in detail
+    const stylesheets = document.styleSheets.length;
+    const bodyBgColor = window.getComputedStyle(document.body).backgroundColor;
+    const stylesheetInfo = [];
+
+    for (let i = 0; i < document.styleSheets.length; i++) {
+      const sheet = document.styleSheets[i];
+      try {
+        const ruleCount = sheet.cssRules ? sheet.cssRules.length : 0;
+        stylesheetInfo.push({
+          href: sheet.href ? sheet.href.substring(sheet.href.length - 30) : 'inline',
+          rules: ruleCount,
+          disabled: sheet.disabled
+        });
+      } catch (e) {
+        stylesheetInfo.push({ href: 'CORS blocked', error: true });
+      }
+    }
+
+    debug('Page loaded', {
+      userAgent: navigator.userAgent.substring(0, 50) + '...',
+      viewport: window.innerWidth + 'x' + window.innerHeight,
+      dpr: window.devicePixelRatio,
+      stylesheets: stylesheets,
+      bodyBg: bodyBgColor
+    });
+
+    debug('Stylesheet details', stylesheetInfo);
+
+    // Check for style and link tags in head
+    const styleTags = document.querySelectorAll('style').length;
+    const linkTags = document.querySelectorAll('link[rel="stylesheet"]').length;
+    const headChildren = document.head ? document.head.children.length : 0;
+
+    debug('Style tags in HTML', {
+      styleTags: styleTags,
+      linkTags: linkTags,
+      headChildren: headChildren
+    });
+
+    // Check if Layout global styles exist
+    const testColor = window.getComputedStyle(document.body).getPropertyValue('--ink');
+    debug('CSS custom properties', {
+      inkVar: testColor || 'NOT FOUND',
+      varSupported: CSS.supports('color', 'var(--test)')
+    });
+
+    debug('Splash element check', {
+      exists: !!testEl,
+      position: splashPosition,
+      display: splashDisplay,
+      shouldBe: 'position:fixed, display:flex'
+    });
+
+    if (testEl && splashPosition !== 'fixed') {
+      debug('⚠️ CSS ISSUE: Splash not positioned correctly!', {
+        actual: splashPosition,
+        expected: 'fixed'
+      });
+    }
+
+    // Check grid element too
+    const gridEl = document.querySelector('.grid');
+    if (gridEl) {
+      const gridStyles = window.getComputedStyle(gridEl);
+      debug('Grid element check', {
+        display: gridStyles.display,
+        columnWidth: gridStyles.columnWidth,
+        flexWrap: gridStyles.flexWrap,
+        width: gridStyles.width
+      });
+    } else {
+      debug('⚠️ Grid element not found');
+    }
+
+    // Check card/note elements
+    const notes = document.querySelectorAll('.note');
+    const articles = document.querySelectorAll('article');
+    debug('Note cards found', {
+      byClass: notes.length,
+      byTag: articles.length
+    });
+
+    if (notes.length > 0) {
+      const firstNote = notes[0];
+      const noteStyles = window.getComputedStyle(firstNote);
+      debug('First note styles', {
+        className: firstNote.className,
+        padding: noteStyles.padding,
+        borderRadius: noteStyles.borderRadius,
+        background: noteStyles.backgroundColor,
+        display: noteStyles.display
+      });
+    } else if (articles.length > 0) {
+      const firstArticle = articles[0];
+      debug('⚠️ Found article but no .note class', {
+        className: firstArticle.className,
+        id: firstArticle.id
+      });
+    }
+
+    // Check for horizontal overflow
+    const bodyWidth = document.body.scrollWidth;
+    const viewportWidth = window.innerWidth;
+    const htmlWidth = document.documentElement.scrollWidth;
+
+    debug('Overflow check', {
+      viewport: viewportWidth + 'px',
+      bodyScroll: bodyWidth + 'px',
+      htmlScroll: htmlWidth + 'px',
+      overflowing: bodyWidth > viewportWidth || htmlWidth > viewportWidth
+    });
+
+    // Find elements wider than viewport
+    if (bodyWidth > viewportWidth || htmlWidth > viewportWidth) {
+      const allElements = document.querySelectorAll('*');
+      const wideElements = [];
+      allElements.forEach(el => {
+        if (el.scrollWidth > viewportWidth + 10) {
+          const rect = el.getBoundingClientRect();
+          wideElements.push({
+            tag: el.tagName,
+            class: el.className.substring(0, 30),
+            width: el.scrollWidth + 'px',
+            left: Math.round(rect.left) + 'px'
+          });
+        }
+      });
+      if (wideElements.length > 0) {
+        debug('⚠️ Wide elements', wideElements.slice(0, 5));
+      }
+    }
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const splash = document.getElementById('splash');
+    const openBtn = document.getElementById('splash-open');
+    const sessionKey = 'fb_splash_' + boardId;
+
+    let alreadySeen = false;
+    try {
+      alreadySeen = sessionStorage.getItem(sessionKey) === '1';
+    } catch (e) {
+      debug('SessionStorage failed', e.message);
+    }
+
+    if (!splash || alreadySeen || reduced) {
+      debug('Skipping splash', { alreadySeen, reduced });
+      splash?.remove();
+      if (!reduced) requestAnimationFrame(() => burstConfetti(120, 1.0));
+    } else {
+      debug('Showing splash');
+      splash.classList.add('is-visible');
+      // Start ambient confetti behind the splash card.
+      ambientConfetti();
+    }
+
+    openBtn?.addEventListener('click', () => {
+      debug('Splash opened');
+      try {
+        sessionStorage.setItem(sessionKey, '1');
+      } catch (e) {
+        debug('SessionStorage write failed', e.message);
+      }
+      splash.classList.add('is-leaving');
+      setTimeout(() => {
+        splash.remove();
+        burstConfetti(180, 1.2);
+      }, 600);
+    });
+
+    // -------- Vanilla canvas confetti --------
+    function burstConfetti(count, intensity) {
+      try {
+        debug('Starting burst confetti', { count, intensity });
+        const cvs = document.getElementById('celebrate-canvas');
+        if (!cvs) {
+          debug('Canvas not found');
+          return;
+        }
+        const ctx = cvs.getContext('2d');
+        if (!ctx) {
+          debug('Canvas context failed');
+          return;
+        }
+        // Reduce particle count on mobile for performance
+        const isMobile = window.innerWidth < 768;
+        if (isMobile) {
+          count = Math.floor(count * 0.5);
+          debug('Mobile detected, reduced particles', count);
+        }
+        const dpr = Math.min(window.devicePixelRatio || 1, 2); // Cap DPR at 2 for performance
     function resize() {
       cvs.width = window.innerWidth * dpr;
       cvs.height = window.innerHeight * dpr;
@@ -136,15 +476,24 @@ const isPrint = Astro.url.searchParams.get('print') === '1';
         cvs.style.opacity = '0';
       }
     }
-    requestAnimationFrame(frame);
-  }
+        requestAnimationFrame(frame);
+      } catch (e) {
+        debug('Burst confetti error', e.message);
+      }
+    }
 
-  // Slow drifting confetti behind the splash card while it's visible.
-  function ambientConfetti() {
-    const cvs = document.getElementById('splash-canvas');
-    if (!cvs) return;
-    const ctx = cvs.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
+    // Slow drifting confetti behind the splash card while it's visible.
+    function ambientConfetti() {
+      try {
+        debug('Starting ambient confetti');
+        const cvs = document.getElementById('splash-canvas');
+        if (!cvs) return;
+        const ctx = cvs.getContext('2d');
+        if (!ctx) {
+          debug('Splash canvas context failed');
+          return;
+        }
+        const dpr = Math.min(window.devicePixelRatio || 1, 2); // Cap DPR at 2
     function resize() {
       cvs.width = window.innerWidth * dpr;
       cvs.height = window.innerHeight * dpr;
@@ -152,10 +501,12 @@ const isPrint = Astro.url.searchParams.get('print') === '1';
       cvs.style.height = window.innerHeight + 'px';
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
-    resize();
-    window.addEventListener('resize', resize);
-    const colors = ['#f59e0b','#ef4444','#3b82f6','#10b981','#a855f7','#ec4899','#fbbf24'];
-    const particles = Array.from({ length: 50 }, () => ({
+        resize();
+        window.addEventListener('resize', resize);
+        const colors = ['#f59e0b','#ef4444','#3b82f6','#10b981','#a855f7','#ec4899','#fbbf24'];
+        // Reduce particles on mobile
+        const particleCount = window.innerWidth < 768 ? 25 : 50;
+        const particles = Array.from({ length: particleCount }, () => ({
       x: Math.random() * window.innerWidth,
       y: Math.random() * window.innerHeight,
       vy: Math.random() * 0.8 + 0.4,
@@ -183,8 +534,26 @@ const isPrint = Astro.url.searchParams.get('print') === '1';
       }
       requestAnimationFrame(frame);
     }
-    requestAnimationFrame(frame);
-    // Stop ambient loop when splash leaves.
-    splash.addEventListener('transitionend', () => { stopped = true; }, { once: true });
+        requestAnimationFrame(frame);
+        // Stop ambient loop when splash leaves.
+        splash.addEventListener('transitionend', () => { stopped = true; }, { once: true });
+      } catch (e) {
+        debug('Ambient confetti error', e.message);
+      }
+    }
+  } catch (e) {
+    debug('Fatal error', e.message);
+    console.error('[Recipient Page] Fatal error:', e);
+    // Page should still be usable even if animations fail
+  }
+
+  // Catch any unhandled errors
+  if (isDebugMode) {
+    window.addEventListener('error', (e) => {
+      debug('Unhandled error', { message: e.message, line: e.lineno, col: e.colno });
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      debug('Unhandled promise rejection', e.reason);
+    });
   }
 </script>

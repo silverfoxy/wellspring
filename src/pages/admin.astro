@@ -1,0 +1,92 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { getEnv, getRequestIdentity } from '../lib/runtime';
+
+const identity = getRequestIdentity(Astro);
+
+// Only admins can access this page
+if (!identity.isAdmin) {
+  return new Response('Forbidden', { status: 403 });
+}
+
+const env = getEnv(Astro);
+
+// Fetch all boards with message counts
+const boards = await env.DB.prepare(`
+  SELECT
+    b.*,
+    (SELECT COUNT(*) FROM messages WHERE board_id = b.id AND hidden = 0) as message_count
+  FROM boards b
+  ORDER BY b.created_at DESC
+`).all();
+
+const baseUrl = Astro.url.origin;
+---
+
+<Layout title="Admin Dashboard">
+  <div class="container">
+    <div class="panel" style="max-width: 1200px; margin: 0 auto;">
+      <h1 style="margin: 0 0 8px;">Admin Dashboard</h1>
+      <p class="muted" style="margin: 0 0 24px;">All boards in the system</p>
+
+      {boards.results.length === 0 ? (
+        <p class="muted">No boards created yet.</p>
+      ) : (
+        <div style="overflow-x: auto;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 2px solid #e5e7eb; text-align: left;">
+                <th style="padding: 12px 8px; font-weight: 600;">Title</th>
+                <th style="padding: 12px 8px; font-weight: 600;">Recipient</th>
+                <th style="padding: 12px 8px; font-weight: 600;">Messages</th>
+                <th style="padding: 12px 8px; font-weight: 600;">Created</th>
+                <th style="padding: 12px 8px; font-weight: 600;">Creator</th>
+                <th style="padding: 12px 8px; font-weight: 600;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {boards.results.map((board: any) => {
+                const viewUrl = `${baseUrl}/b/${board.view_token}`;
+                const editUrl = `${baseUrl}/b/${board.view_token}/edit/${board.edit_token}`;
+                const recipientUrl = `${baseUrl}/r/${board.recipient_token}`;
+                const createdDate = new Date(board.created_at * 1000).toLocaleDateString();
+
+                return (
+                  <tr style="border-bottom: 1px solid #e5e7eb;">
+                    <td style="padding: 12px 8px;">
+                      <strong>{board.title}</strong>
+                      {board.locked === 1 && <span style="color: #ef4444; margin-left: 6px;" title="Locked">🔒</span>}
+                    </td>
+                    <td style="padding: 12px 8px;">{board.recipient}</td>
+                    <td style="padding: 12px 8px; text-align: center;">{board.message_count}</td>
+                    <td style="padding: 12px 8px; color: #6b7280; font-size: 13px;">{createdDate}</td>
+                    <td style="padding: 12px 8px; color: #6b7280; font-size: 13px;">
+                      {board.created_by_email || board.created_by || '—'}
+                    </td>
+                    <td style="padding: 12px 8px;">
+                      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                        <a href={editUrl} class="btn secondary" style="padding: 6px 10px; font-size: 12px;">Edit</a>
+                        <a href={viewUrl} class="btn secondary" style="padding: 6px 10px; font-size: 12px;">View</a>
+                        <a href={recipientUrl} class="btn secondary" style="padding: 6px 10px; font-size: 12px;">Recipient</a>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid #e5e7eb;">
+        <h2 style="font-size: 18px; margin: 0 0 12px;">Quick Links</h2>
+        <p class="muted" style="margin: 0 0 12px;">Save these instructions for future reference:</p>
+        <ul style="color: #6b7280; font-size: 14px; line-height: 1.8;">
+          <li><strong>Edit:</strong> Moderate messages, reorder, change theme, lock board</li>
+          <li><strong>View:</strong> Contributor page where people can sign the board</li>
+          <li><strong>Recipient:</strong> Read-only view with reveal animation for the recipient</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</Layout>

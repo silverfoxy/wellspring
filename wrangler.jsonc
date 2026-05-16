@@ -21,7 +21,7 @@
 		{
 			"binding": "DB",
 			"database_name": "wellspring",
-			"database_id": "",
+			"database_id": "7926e023-52f7-46ed-b79c-ba6c86471a63",
 			"migrations_dir": "migrations"
 		}
 	],
@@ -37,10 +37,16 @@
 		// Set these when putting the app behind Cloudflare Access. Leave blank
 		// for single-tenant mode (no auth, anyone with the URL can create boards).
 		// `scripts/setup-access.sh` can fill these in for you.
-		"ACCESS_TEAM_DOMAIN": "",
-		"ACCESS_AUD": ""
-	}
+		"ACCESS_TEAM_DOMAIN": "pragsec.cloudflareaccess.com",
+		"ACCESS_AUD": "1503ae7258c3c7a951c92950f01217c5d78901d7edd11a545a48534214d475f2"
+	},
 	// To enable PDF/image export, also add a Browser Rendering binding:
 	//   "browser": { "binding": "BROWSER" }
 	// And set CF_ACCOUNT_ID + CF_API_TOKEN secrets via `scripts/setup-secrets.sh`.
+	"routes": [
+		{
+			"pattern": "wellspring.imsilverfoxy.com",
+			"custom_domain": true
+		}
+	]
 }

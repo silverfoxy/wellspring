@@ -8,4 +8,7 @@ export default defineConfig({
   adapter: cloudflare({
     platformProxy: { enabled: true },
   }),
+  image: {
+    service: { entrypoint: 'astro/assets/services/noop' },
+  },
 });

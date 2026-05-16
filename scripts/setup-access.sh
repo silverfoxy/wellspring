@@ -42,6 +42,13 @@ bold "Wellspring · Cloudflare Access setup"
 #   Account Settings             → Read     (for the team domain)
 # (We don't try to mint a token via wrangler because there's no clean public API
 # for it; we ask the user to create one in the dashboard.)
+
+# Try to read CF_API_TOKEN from .dev.vars if it exists
+if [ -z "${CF_API_TOKEN:-}" ] && [ -f .dev.vars ]; then
+  CF_API_TOKEN="$(grep '^CF_API_TOKEN=' .dev.vars 2>/dev/null | cut -d'=' -f2- || true)"
+  [ -n "$CF_API_TOKEN" ] && ok "Loaded CF_API_TOKEN from .dev.vars"
+fi
+
 if [ -z "${CF_API_TOKEN:-}" ]; then
   cat <<TXT
   You'll need an API token with these permissions:

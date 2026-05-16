@@ -34,8 +34,14 @@ bold "Wellspring deploy → worker: $WORKER_NAME"
 
 # 1. Login check
 if ! npx --yes wrangler whoami >/dev/null 2>&1; then
-  warn "Not logged in to Cloudflare. Opening browser..."
-  npx --yes wrangler login
+  warn "Not logged in to Cloudflare. Attempting login..."
+  if ! npx --yes wrangler login; then
+    err "Login failed. Please run 'npx wrangler login' manually, or set CLOUDFLARE_API_TOKEN environment variable."
+  fi
+  # Verify login succeeded
+  if ! npx --yes wrangler whoami >/dev/null 2>&1; then
+    err "Authentication failed. Please run 'npx wrangler login' manually, or set CLOUDFLARE_API_TOKEN environment variable."
+  fi
 fi
 ok "Authenticated with Cloudflare"
 
