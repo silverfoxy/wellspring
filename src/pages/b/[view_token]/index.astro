@@ -1,0 +1,504 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import BoardMessages from '../../../components/BoardMessages.astro';
+import { getBoardByViewToken, listMessages } from '../../../lib/db';
+import { getEnv, getRequestIdentity } from '../../../lib/runtime';
+import { getBoardBackground, NOTE_COLORS, NOTE_MOTIFS, THEMES } from '../../../lib/types';
+
+export const prerender = false;
+
+const env = getEnv(Astro);
+const { view_token } = Astro.params;
+const board = view_token ? await getBoardByViewToken(env.DB, view_token) : null;
+
+if (!board) {
+  return new Response('Board not found', { status: 404 });
+}
+
+const messages = await listMessages(env.DB, board.id, false);
+const identity = getRequestIdentity(Astro);
+const theme = THEMES.find((t) => t.id === board.theme) ?? THEMES[0];
+// User-chosen board background overrides the theme's built-in pattern when set.
+const bg = getBoardBackground(board.background);
+const pageBgPattern = bg.id !== 'none' ? bg.pattern : theme.pattern;
+const pageBgSize = bg.id !== 'none' ? bg.size : theme.patternSize;
+const isPrint = Astro.url.searchParams.get('print') === '1';
+const isLocked = board.locked === 1;
+const canPost = !isPrint && !isLocked;
+---
+
+<Layout title={board.title} bg={theme.bg} pattern={pageBgPattern} patternSize={pageBgSize} isPrint={isPrint}>
+  <main class="container">
+    <header class="board-header">
+      <h1>{board.title}</h1>
+      <div class="recipient">For {board.recipient}</div>
+    </header>
+
+    {canPost && (
+      <section
+        id="msg-panel"
+        class="panel no-print"
+        style={`max-width: 640px; margin: 0 auto 32px; background: ${NOTE_COLORS[0]}; transition: background 0.2s;`}
+      >
+        <h2 style="margin-top:0;">Add your message</h2>
+        <form
+          method="POST"
+          action="/api/messages"
+          enctype="multipart/form-data"
+          id="msg-form"
+        >
+          <input type="hidden" name="view_token" value={board.view_token} />
+          <input type="hidden" name="image_key" id="image_key" />
+          <input type="hidden" name="image_url" id="image_url" />
+          <input type="hidden" name="motif" id="motif" value="none" />
+
+          <label for="author">Your name</label>
+          <input
+            id="author"
+            name="author"
+            required
+            maxlength="60"
+            value={identity.email ? identity.email.split('@')[0] : ''}
+          />
+
+          <label for="editor">Message</label>
+          <input type="hidden" name="body_html" id="body_html" />
+          <input type="hidden" name="body" id="body" />
+          <div class="editor-toolbar" role="toolbar" aria-label="Formatting">
+            <button tabindex="-1" type="button" class="tb" data-cmd="bold" title="Bold (Ctrl/Cmd+B)" aria-label="Bold"><b>B</b></button>
+            <button tabindex="-1" type="button" class="tb" data-cmd="italic" title="Italic (Ctrl/Cmd+I)" aria-label="Italic"><i>I</i></button>
+            <button tabindex="-1" type="button" class="tb" data-cmd="underline" title="Underline (Ctrl/Cmd+U)" aria-label="Underline"><u>U</u></button>
+            <span class="tb-sep" aria-hidden="true"></span>
+            <button tabindex="-1" type="button" class="tb" data-cmd="justifyLeft" title="Align left" aria-label="Align left">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor"><rect x="2" y="3" width="12" height="1.5" rx="0.5"/><rect x="2" y="6.5" width="8" height="1.5" rx="0.5"/><rect x="2" y="10" width="12" height="1.5" rx="0.5"/><rect x="2" y="13.5" width="6" height="1.5" rx="0.5"/></g></svg>
+            </button>
+            <button tabindex="-1" type="button" class="tb" data-cmd="justifyCenter" title="Align center" aria-label="Align center">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor"><rect x="2" y="3" width="12" height="1.5" rx="0.5"/><rect x="4" y="6.5" width="8" height="1.5" rx="0.5"/><rect x="2" y="10" width="12" height="1.5" rx="0.5"/><rect x="5" y="13.5" width="6" height="1.5" rx="0.5"/></g></svg>
+            </button>
+            <button tabindex="-1" type="button" class="tb" data-cmd="justifyRight" title="Align right" aria-label="Align right">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor"><rect x="2" y="3" width="12" height="1.5" rx="0.5"/><rect x="6" y="6.5" width="8" height="1.5" rx="0.5"/><rect x="2" y="10" width="12" height="1.5" rx="0.5"/><rect x="8" y="13.5" width="6" height="1.5" rx="0.5"/></g></svg>
+            </button>
+            <span class="tb-sep" aria-hidden="true"></span>
+            <button tabindex="-1" type="button" class="tb" id="tb-link" title="Insert link" aria-label="Insert link">🔗</button>
+            <span class="tb-emoji-wrap">
+              <button tabindex="-1" type="button" class="tb" id="tb-emoji" title="Insert emoji" aria-label="Insert emoji" aria-haspopup="true" aria-expanded="false">😀</button>
+              <div id="emoji-panel" class="emoji-panel" hidden></div>
+            </span>
+          </div>
+          <div
+            id="editor"
+            class="editor"
+            contenteditable="true"
+            role="textbox"
+            aria-multiline="true"
+            aria-label="Message"
+            data-placeholder="It's been a pleasure working with you…"
+          ></div>
+
+          <label>Note color</label>
+          <div id="colors" style="display:flex; gap:8px; flex-wrap:wrap;">
+            {NOTE_COLORS.map((c, i) => (
+              <label style={`display:inline-block; width:32px; height:32px; border-radius:50%; background:${c}; cursor:pointer; border:2px solid ${i===0 ? '#1f2937' : 'transparent'};`}>
+                <input type="radio" name="color" value={c} checked={i===0} style="display:none;" />
+              </label>
+            ))}
+          </div>
+
+          <label>Decorate (optional)</label>
+          <div id="motifs" style="display:flex; gap:6px; flex-wrap:wrap;">
+            {NOTE_MOTIFS.map((m) => (
+              <button
+                type="button"
+                class={`motif-btn${m.id === 'none' ? ' is-active' : ''}`}
+                data-motif={m.id}
+                data-pattern={m.pattern}
+                data-size={m.size}
+                title={m.label}
+                aria-label={m.label}
+              >
+                <span aria-hidden="true">{m.emoji}</span>
+              </button>
+            ))}
+          </div>
+
+          <label>Add an image (optional)</label>
+
+          <div id="attached-preview" hidden style="margin-bottom:12px; padding:12px; background:rgba(255,255,255,0.5); border:1px solid rgba(0,0,0,0.08); border-radius:8px;">
+            <p class="muted" style="margin:0 0 8px; font-weight:600;">Selected:</p>
+            <img id="attached-img" alt="" style="max-width:160px; max-height:160px; border-radius:8px; display:block;" />
+            <button type="button" class="btn secondary" id="clear-attachment" style="margin-top:8px; padding:4px 10px; font-size:12px;">Remove</button>
+          </div>
+
+          <div class="tabs" role="tablist">
+            <button type="button" class="tab is-active" data-tab="giphy" role="tab">🔍 Search GIPHY</button>
+            <button type="button" class="tab" data-tab="upload" role="tab">📁 Upload</button>
+          </div>
+
+          <div data-panel="giphy" class="tab-panel">
+            <div style="display:flex; gap:8px;">
+              <input id="giphy-q" type="search" placeholder="Search GIFs… (e.g. high five)" />
+              <button class="btn secondary" type="button" id="giphy-search-btn">Search</button>
+            </div>
+            <div id="giphy-status" class="muted" style="margin-top:8px;"></div>
+            <div id="giphy-trending-cta" style="margin-top:12px;">
+              <button class="btn secondary" type="button" id="giphy-load-trending">Show trending GIFs</button>
+            </div>
+            <div id="giphy-results" class="giphy-grid" style="margin-top:12px;"></div>
+          </div>
+
+          <div data-panel="upload" class="tab-panel" hidden>
+            <input id="file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
+            <p class="muted" id="upload-status"></p>
+          </div>
+
+          <div style="margin-top:16px;">
+            <button class="btn" type="submit" id="submit-btn">Post message</button>
+          </div>
+        </form>
+      </section>
+    )}
+
+    {isLocked && !isPrint && (
+      <div class="panel no-print" style="max-width: 640px; margin: 0 auto 32px; text-align:center;">
+        <p>🔒 This board is locked. No new messages can be added.</p>
+      </div>
+    )}
+
+    <BoardMessages board={board} messages={messages} showHeader={false} viewerEmail={identity.email} />
+  </main>
+</Layout>
+
+<script is:inline>
+  // ---- Rich-text editor ----
+  const editor = document.getElementById('editor');
+  const bodyHtmlInput = document.getElementById('body_html');
+  const bodyTextInput = document.getElementById('body');
+  const toolbar = document.querySelector('.editor-toolbar');
+
+  // Re-focus the editor and refresh toolbar state after a button click.
+  function applyCmd(cmd, value) {
+    editor.focus();
+    document.execCommand(cmd, false, value);
+    updateToolbarState();
+  }
+
+  function updateToolbarState() {
+    if (!toolbar) return;
+    toolbar.querySelectorAll('.tb[data-cmd]').forEach((b) => {
+      try {
+        const active = document.queryCommandState(b.dataset.cmd);
+        b.classList.toggle('is-active', active);
+      } catch {}
+    });
+  }
+
+  toolbar?.querySelectorAll('.tb[data-cmd]').forEach((b) => {
+    b.addEventListener('mousedown', (e) => e.preventDefault()); // keep selection
+    b.addEventListener('click', () => applyCmd(b.dataset.cmd));
+  });
+
+  // Link insertion
+  document.getElementById('tb-link')?.addEventListener('mousedown', (e) => e.preventDefault());
+  document.getElementById('tb-link')?.addEventListener('click', () => {
+    const sel = window.getSelection();
+    const selected = sel && !sel.isCollapsed ? sel.toString() : '';
+    const url = prompt('Link URL:', 'https://');
+    if (!url) return;
+    if (!/^(https?:|mailto:)/i.test(url)) {
+      alert('Use a http(s) or mailto link.');
+      return;
+    }
+    editor.focus();
+    if (selected) {
+      document.execCommand('createLink', false, url);
+    } else {
+      // No selection: insert the URL as visible link text.
+      document.execCommand('insertHTML', false, `<a href="${url}">${url}</a>`);
+    }
+  });
+
+  // Keep state in sync as user types / clicks around.
+  editor?.addEventListener('keyup', updateToolbarState);
+  editor?.addEventListener('mouseup', updateToolbarState);
+  editor?.addEventListener('input', () => {
+    bodyHtmlInput.value = editor.innerHTML;
+    bodyTextInput.value = editor.innerText.trim();
+  });
+
+  // Pressing Space turns off any active inline formatting (bold/italic/underline)
+  // so the next word is unstyled — mirrors common editor behavior.
+  const TOGGLE_ON_SPACE = ['bold', 'italic', 'underline'];
+  editor?.addEventListener('keydown', (e) => {
+    if (e.key !== ' ' && e.code !== 'Space') return;
+    const sel = window.getSelection();
+    if (!sel || !sel.isCollapsed) return; // only when typing, not over a selection
+    let toggled = false;
+    for (const cmd of TOGGLE_ON_SPACE) {
+      try {
+        if (document.queryCommandState(cmd)) {
+          document.execCommand(cmd, false);
+          toggled = true;
+        }
+      } catch {}
+    }
+    if (toggled) {
+      // Insert the space ourselves now that styles are off, so it isn't re-styled.
+      e.preventDefault();
+      document.execCommand('insertText', false, ' ');
+      updateToolbarState();
+    }
+  });
+
+  // Strip formatting on paste — paste as plain text to keep our sanitizer happy.
+  editor?.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const text = e.clipboardData?.getData('text/plain') ?? '';
+    document.execCommand('insertText', false, text);
+  });
+
+  // ---- Emoji picker ----
+  const EMOJI_GROUPS = [
+    '😀 😃 😄 😁 😆 😅 🤣 😂 🙂 🙃 😉 😊 😇 🥰 😍 🤩',
+    '😘 😗 😚 😙 😋 😛 😜 🤪 😝 🤗 🤭 🤔 🤨 😐 😑 😶',
+    '🥲 😏 😒 🙄 😬 🤥 😌 😔 😪 🤤 😴 😷 🤒 🤕 🤧 🥵',
+    '👋 🤝 🙌 👏 🤲 🤗 🙏 👍 👎 👌 🤌 🤏 ✌️ 🤞 🤟 🤘',
+    '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 ❣️ 💕 💞 💓 💗 💖',
+    '🎉 🎊 🎈 🎁 🎂 🍰 🧁 🍾 🥂 🌟 ✨ 💫 ⭐ 🌈 ☀️ 🌸',
+    '🚀 🛫 🌍 🏆 🥇 🎖️ 🏅 📌 ✅ 💼 💻 ⌨️ 🖱️ 🖥️ 📱 📞',
+  ];
+  const emojiPanel = document.getElementById('emoji-panel');
+  let emojiBuilt = false;
+  function buildEmojiPanel() {
+    if (emojiBuilt || !emojiPanel) return;
+    const all = EMOJI_GROUPS.join(' ').split(/\s+/).filter(Boolean);
+    for (const e of all) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = e;
+      b.addEventListener('mousedown', (ev) => ev.preventDefault());
+      b.addEventListener('click', () => {
+        editor.focus();
+        document.execCommand('insertText', false, e);
+        bodyHtmlInput.value = editor.innerHTML;
+        bodyTextInput.value = editor.innerText.trim();
+      });
+      emojiPanel.appendChild(b);
+    }
+    emojiBuilt = true;
+  }
+  const emojiBtn = document.getElementById('tb-emoji');
+  function setEmojiPanelOpen(open) {
+    if (!emojiPanel) return;
+    emojiPanel.hidden = !open;
+    emojiBtn?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  emojiBtn?.addEventListener('mousedown', (e) => e.preventDefault());
+  emojiBtn?.addEventListener('click', () => {
+    if (!emojiPanel) return;
+    buildEmojiPanel();
+    setEmojiPanelOpen(emojiPanel.hidden);
+  });
+  // Click outside closes the panel.
+  document.addEventListener('click', (e) => {
+    if (!emojiPanel || emojiPanel.hidden) return;
+    const target = e.target;
+    if (target === emojiBtn || emojiPanel.contains(target) || emojiBtn?.contains(target)) return;
+    setEmojiPanelOpen(false);
+  });
+  // Escape closes.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && emojiPanel && !emojiPanel.hidden) setEmojiPanelOpen(false);
+  });
+
+  // Color swatch selection — also recolors the form panel so contributors see a live preview.
+  const msgPanel = document.getElementById('msg-panel');
+  document.querySelectorAll('#colors label').forEach((el) => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('#colors label').forEach((l) =>
+        l.style.setProperty('border-color', 'transparent'),
+      );
+      el.style.borderColor = '#1f2937';
+      const radio = el.querySelector('input[type="radio"]');
+      if (radio && msgPanel) msgPanel.style.background = radio.value;
+    });
+  });
+
+  // Motif picker — applies the chosen pattern as a watermark on the form panel.
+  const motifInput = document.getElementById('motif');
+  function applyMotifPreview(pattern, size) {
+    if (!msgPanel) return;
+    if (!pattern || pattern === 'none') {
+      msgPanel.classList.remove('has-motif');
+      msgPanel.style.removeProperty('--motif');
+      msgPanel.style.removeProperty('--motif-size');
+    } else {
+      msgPanel.classList.add('has-motif');
+      msgPanel.style.setProperty('--motif', pattern);
+      msgPanel.style.setProperty('--motif-size', size);
+    }
+  }
+  document.querySelectorAll('.motif-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.motif-btn').forEach((b) => b.classList.remove('is-active'));
+      btn.classList.add('is-active');
+      motifInput.value = btn.dataset.motif;
+      applyMotifPreview(btn.dataset.pattern, btn.dataset.size);
+    });
+  });
+
+  // ---- Shared refs ----
+  const form = document.getElementById('msg-form');
+  const fileInput = document.getElementById('file');
+  const uploadStatus = document.getElementById('upload-status');
+  const imageKeyInput = document.getElementById('image_key');
+  const imageUrlInput = document.getElementById('image_url');
+  const submitBtn = document.getElementById('submit-btn');
+  const attachedPreview = document.getElementById('attached-preview');
+  const attachedImg = document.getElementById('attached-img');
+  const clearBtn = document.getElementById('clear-attachment');
+  const viewToken = form?.querySelector('input[name="view_token"]').value;
+
+  let uploading = false;
+
+  function setAttachment({ key = '', url = '', preview = '' } = {}) {
+    imageKeyInput.value = key;
+    imageUrlInput.value = url;
+    if (preview) {
+      attachedImg.src = preview;
+      attachedPreview.hidden = false;
+    } else {
+      attachedImg.removeAttribute('src');
+      attachedPreview.hidden = true;
+    }
+  }
+
+  clearBtn?.addEventListener('click', () => {
+    setAttachment();
+    fileInput.value = '';
+    uploadStatus.textContent = '';
+  });
+
+  // ---- Tabs ----
+  document.querySelectorAll('.tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const name = tab.dataset.tab;
+      document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('is-active', t === tab));
+      document.querySelectorAll('[data-panel]').forEach((p) => {
+        p.hidden = p.dataset.panel !== name;
+      });
+    });
+  });
+
+  // ---- Upload tab ----
+  fileInput?.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (!file) {
+      setAttachment();
+      uploadStatus.textContent = '';
+      return;
+    }
+    uploading = true;
+    submitBtn.disabled = true;
+    uploadStatus.textContent = 'Uploading…';
+    const fd = new FormData();
+    fd.append('view_token', viewToken);
+    fd.append('file', file);
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      setAttachment({ key: data.key, preview: URL.createObjectURL(file) });
+      uploadStatus.textContent = '✓ Image attached';
+    } catch (err) {
+      uploadStatus.textContent = 'Upload failed: ' + err.message;
+      fileInput.value = '';
+      setAttachment();
+    } finally {
+      uploading = false;
+      submitBtn.disabled = false;
+    }
+  });
+
+  // ---- GIPHY tab ----
+  const giphyQ = document.getElementById('giphy-q');
+  const giphyBtn = document.getElementById('giphy-search-btn');
+  const giphyResults = document.getElementById('giphy-results');
+  const giphyStatus = document.getElementById('giphy-status');
+  const trendingCta = document.getElementById('giphy-trending-cta');
+
+  let giphyTimer;
+  let giphyLoaded = false;
+
+  async function runGiphySearch(query) {
+    if (trendingCta) trendingCta.hidden = true;
+    giphyStatus.textContent = 'Searching…';
+    giphyResults.innerHTML = '';
+    try {
+      const res = await fetch('/api/giphy?q=' + encodeURIComponent(query || ''));
+      if (!res.ok) throw new Error(res.status === 501 ? 'GIPHY not configured by site owner.' : await res.text());
+      const data = await res.json();
+      if (!data.items?.length) {
+        giphyStatus.textContent = 'No GIFs found.';
+        return;
+      }
+      giphyStatus.textContent = '';
+      for (const item of data.items) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.title = item.title;
+        btn.dataset.full = item.full;
+        const img = document.createElement('img');
+        img.src = item.preview;
+        img.loading = 'lazy';
+        img.alt = item.title;
+        btn.appendChild(img);
+        btn.addEventListener('click', () => {
+          // Clear any uploaded file when picking a GIF.
+          fileInput.value = '';
+          uploadStatus.textContent = '';
+          setAttachment({ url: item.full, preview: item.preview });
+        });
+        giphyResults.appendChild(btn);
+      }
+    } catch (err) {
+      giphyStatus.textContent = 'Error: ' + err.message;
+    }
+  }
+
+  giphyBtn?.addEventListener('click', () => runGiphySearch(giphyQ.value.trim()));
+  giphyQ?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      runGiphySearch(giphyQ.value.trim());
+    }
+  });
+  giphyQ?.addEventListener('input', () => {
+    clearTimeout(giphyTimer);
+    const v = giphyQ.value.trim();
+    if (v.length < 2) return;
+    giphyTimer = setTimeout(() => runGiphySearch(v), 350);
+  });
+
+  // Load trending GIFs only when the user explicitly clicks the CTA button.
+  document.getElementById('giphy-load-trending')?.addEventListener('click', () => {
+    giphyLoaded = true;
+    runGiphySearch('');
+  });
+
+  // ---- Submit guard ----
+  form?.addEventListener('submit', (e) => {
+    if (uploading) {
+      e.preventDefault();
+      alert('Wait for upload to finish.');
+      return;
+    }
+    // Final sync of editor contents in case input event hasn't fired.
+    bodyHtmlInput.value = editor.innerHTML;
+    bodyTextInput.value = editor.innerText.trim();
+    const hasImage = imageKeyInput.value || imageUrlInput.value;
+    if (!bodyTextInput.value && !hasImage) {
+      e.preventDefault();
+      alert('Add a message or an image first.');
+    }
+  });
+</script>

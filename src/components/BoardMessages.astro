@@ -1,0 +1,84 @@
+---
+import { imageUrl } from '../lib/runtime';
+import { sanitizeHtml } from '../lib/sanitize';
+import { getMotif } from '../lib/types';
+import type { Board, Message } from '../lib/types';
+
+interface Props {
+  board: Board;
+  messages: Message[];
+  emptyText?: string;
+  showHeader?: boolean;
+  /** Email of the signed-in user. When matching a message's author_email, a "delete" affordance is shown. */
+  viewerEmail?: string | null;
+}
+
+const {
+  board,
+  messages,
+  emptyText = 'No messages yet. Be the first to sign! 🎈',
+  showHeader = true,
+  viewerEmail = null,
+} = Astro.props;
+const viewer = viewerEmail?.toLowerCase() ?? null;
+---
+
+{showHeader && (
+  <header class="board-header">
+    <h1>{board.title}</h1>
+    <div class="recipient">For {board.recipient}</div>
+  </header>
+)}
+
+<section class="grid" id="messages">
+  {messages.map((m, idx) => {
+    const motif = getMotif(m.motif);
+    const noteStyle = [
+      `background:${m.color}`,
+      `--rot: ${((idx * 37) % 7) - 3}deg`,
+      motif.id !== 'none' ? `--motif: ${motif.pattern}` : '',
+      motif.id !== 'none' ? `--motif-size: ${motif.size}` : '',
+    ]
+      .filter(Boolean)
+      .join('; ');
+    return (
+      <article class={`note${motif.id !== 'none' ? ' has-motif' : ''}`} style={noteStyle}>
+        {m.image_url ? (
+          <img src={m.image_url} alt="" loading="lazy" referrerpolicy="no-referrer" />
+        ) : m.image_key ? (
+          <img src={imageUrl(m.image_key)} alt="" loading="lazy" />
+        ) : null}
+        {(m.body_html || m.body) && (
+          m.body_html ? (
+            <div
+              class="note-body rich"
+              style={(m.image_key || m.image_url) ? 'margin-top:12px;' : ''}
+              set:html={sanitizeHtml(m.body_html)}
+            />
+          ) : (
+            <div class="note-body" style={(m.image_key || m.image_url) ? 'margin-top:12px;' : ''}>{m.body}</div>
+          )
+        )}
+        {viewer && m.author_email && viewer === m.author_email.toLowerCase() && (
+          <form method="POST" action="/api/moderate" class="own-message-tools no-print" style="margin-top:10px;">
+            <input type="hidden" name="view_token" value={board.view_token} />
+            <input type="hidden" name="message_id" value={m.id} />
+            <input type="hidden" name="action" value="delete" />
+            <button
+              type="submit"
+              class="btn secondary"
+              style="padding:4px 10px; font-size:12px;"
+              onclick="return confirm('Delete your message?');"
+            >Delete</button>
+          </form>
+        )}
+        <div class="author">— {m.author}</div>
+      </article>
+    );
+  })}
+  {messages.length === 0 && (
+    <p class="muted" style="text-align:center;">
+      {emptyText}
+    </p>
+  )}
+</section>

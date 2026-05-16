@@ -1,0 +1,343 @@
+---
+import Layout from '../../../../layouts/Layout.astro';
+import { getBoardByEditToken, listMessages } from '../../../../lib/db';
+import { getEnv, imageUrl } from '../../../../lib/runtime';
+import { sanitizeHtml } from '../../../../lib/sanitize';
+import { BOARD_BACKGROUNDS, getBoardBackground, getMotif, THEMES } from '../../../../lib/types';
+
+export const prerender = false;
+
+const env = getEnv(Astro);
+const { view_token, edit_token } = Astro.params;
+const board = edit_token ? await getBoardByEditToken(env.DB, edit_token) : null;
+
+if (!board || board.view_token !== view_token) {
+  return new Response('Forbidden', { status: 403 });
+}
+
+const messages = await listMessages(env.DB, board.id, true);
+const theme = THEMES.find((t) => t.id === board.theme) ?? THEMES[0];
+const bg = getBoardBackground(board.background);
+const pageBgPattern = bg.id !== 'none' ? bg.pattern : theme.pattern;
+const pageBgSize = bg.id !== 'none' ? bg.size : theme.patternSize;
+const origin = Astro.url.origin;
+const contributorUrl = `${origin}/b/${board.view_token}`;
+const recipientUrl = `${origin}/r/${board.recipient_token}`;
+---
+
+<Layout title={`Manage: ${board.title}`} bg={theme.bg} pattern={pageBgPattern} patternSize={pageBgSize}>
+  <main class="container">
+    <div class="panel" style="margin-bottom: 24px;">
+      <h1 style="margin-top:0;">Manage board</h1>
+      <p style="margin:0 0 12px;"><strong id="hdr-title">{board.title}</strong> &middot; for <span id="hdr-recipient">{board.recipient}</span></p>
+
+      <label>Contributor link (people who will sign the card)</label>
+      <div style="display:flex; gap:8px;">
+        <input readonly id="contrib-url" value={contributorUrl} />
+        <button class="btn" type="button" data-copy="contrib-url">Copy</button>
+      </div>
+
+      <label style="margin-top:16px;">Recipient link (read-only, for {board.recipient})</label>
+      <div style="display:flex; gap:8px;">
+        <input readonly id="recipient-url" value={recipientUrl} />
+        <button class="btn" type="button" data-copy="recipient-url">Copy</button>
+      </div>
+      <p class="muted" style="margin-top:8px;">
+        Share this with {board.recipient} — it shows the messages with no post form. Lock the board first if you want to prevent further edits.
+      </p>
+
+      <p class="muted" style="margin-top:16px;">
+        Keep this dashboard URL private — it gives full moderation access.
+      </p>
+
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:16px;">
+        <a class="btn secondary" href={`/b/${board.view_token}`}>Open contributor view</a>
+        <a class="btn secondary" href={`/r/${board.recipient_token}`}>Preview recipient view</a>
+        <form method="POST" action="/api/moderate" style="display:inline;">
+          <input type="hidden" name="edit_token" value={board.edit_token} />
+          <input type="hidden" name="action" value={board.locked === 1 ? 'unlock' : 'lock'} />
+          <button class="btn secondary" type="submit">
+            {board.locked === 1 ? '🔓 Unlock board' : '🔒 Lock board'}
+          </button>
+        </form>
+        <a class="btn secondary" href={`/api/export?edit_token=${board.edit_token}&format=pdf`}>⬇️ Export PDF</a>
+        <a class="btn secondary" href={`/api/export?edit_token=${board.edit_token}&format=png`}>⬇️ Export PNG</a>
+      </div>
+    </div>
+
+    <details class="panel" style="margin-bottom: 24px;">
+      <summary style="cursor:pointer; font-weight:700;">✏️ Board details &amp; appearance</summary>
+      <form method="POST" action="/api/board-update" style="margin-top: 16px;">
+        <input type="hidden" name="edit_token" value={board.edit_token} />
+
+        <label for="board-title">Board title</label>
+        <input id="board-title" name="title" required maxlength="120" value={board.title} />
+
+        <label for="board-recipient">Recipient name</label>
+        <input id="board-recipient" name="recipient" required maxlength="80" value={board.recipient} />
+
+        <label for="theme">Theme color</label>
+        <select id="theme" name="theme">
+          {THEMES.map((t) => (
+            <option value={t.id} selected={t.id === board.theme}>{t.name}</option>
+          ))}
+        </select>
+
+        <label>Background pattern</label>
+        <input type="hidden" id="background" name="background" value={board.background ?? 'none'} />
+        <div id="bg-picker" class="bg-picker">
+          {BOARD_BACKGROUNDS.map((b) => {
+            const isActive = (board.background ?? 'none') === b.id;
+            return (
+              <button
+                type="button"
+                class={`bg-swatch${isActive ? ' is-active' : ''}`}
+                data-bg={b.id}
+                data-pattern={b.pattern}
+                data-size={b.size}
+                title={b.label}
+                aria-label={b.label}
+                style={`--swatch-bg:${b.preview}; --swatch-pattern:${b.pattern}; --swatch-size:${b.size};`}
+              >
+                {b.id === 'none' && <span aria-hidden="true">∅</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style="margin-top:16px; display:flex; gap:8px;">
+          <button class="btn" type="submit">Save changes</button>
+        </div>
+        <p class="muted" style="margin-top:8px;">
+          Appearance preview updates live as you click. Save to apply for everyone.
+        </p>
+      </form>
+    </details>
+
+    <h2 style="display:flex; align-items:center; gap:8px;">
+      Messages ({messages.length})
+      <span class="muted" style="font-weight:400; font-size:13px;">drag the ⋮⋮ handle to reorder</span>
+      <span id="reorder-status" class="muted" style="font-weight:400; font-size:13px;"></span>
+    </h2>
+    <section class="grid" id="sortable">
+      {messages.map((m) => {
+        const motif = getMotif(m.motif);
+        const noteStyle = [
+          `background:${m.color}`,
+          `opacity:${m.hidden === 1 ? 0.5 : 1}`,
+          motif.id !== 'none' ? `--motif: ${motif.pattern}` : '',
+          motif.id !== 'none' ? `--motif-size: ${motif.size}` : '',
+        ]
+          .filter(Boolean)
+          .join('; ');
+        return (
+          <article
+            class={`note sortable-item${motif.id !== 'none' ? ' has-motif' : ''}`}
+            style={noteStyle}
+            data-id={m.id}
+          >
+            <button type="button" class="drag-handle" aria-label="Drag to reorder" title="Drag to reorder">⋮⋮</button>
+            {m.image_url ? (
+              <img src={m.image_url} alt="" referrerpolicy="no-referrer" />
+            ) : m.image_key ? (
+              <img src={imageUrl(m.image_key)} alt="" />
+            ) : null}
+            {(m.body_html || m.body) &&
+              (m.body_html ? (
+                <div
+                  class="note-body rich"
+                  style={(m.image_key || m.image_url) ? 'margin-top:12px;' : ''}
+                  set:html={sanitizeHtml(m.body_html)}
+                />
+              ) : (
+                <div class="note-body" style={(m.image_key || m.image_url) ? 'margin-top:12px;' : ''}>{m.body}</div>
+              ))}
+            <div class="author">— {m.author}</div>
+            <form method="POST" action="/api/moderate" style="margin-top: 12px; display:flex; gap:6px; flex-wrap:wrap;">
+              <input type="hidden" name="edit_token" value={board.edit_token} />
+              <input type="hidden" name="message_id" value={m.id} />
+              {m.hidden === 1 ? (
+                <button class="btn secondary" name="action" value="show" type="submit" style="padding:6px 10px; font-size:12px;">Unhide</button>
+              ) : (
+                <button class="btn secondary" name="action" value="hide" type="submit" style="padding:6px 10px; font-size:12px;">Hide</button>
+              )}
+              <button
+                class="btn danger"
+                name="action" value="delete" type="submit"
+                style="padding:6px 10px; font-size:12px;"
+                onclick="return confirm('Delete this message permanently?');"
+              >Delete</button>
+            </form>
+          </article>
+        );
+      })}
+      {messages.length === 0 && (
+        <p class="muted">No messages yet. Share the link to start collecting them!</p>
+      )}
+    </section>
+  </main>
+</Layout>
+
+<script
+  type="application/json"
+  id="theme-data"
+  set:html={JSON.stringify(Object.fromEntries(THEMES.map((t) => [t.id, { bg: t.bg, pattern: t.pattern, patternSize: t.patternSize }])))}
+></script>
+<script
+  type="application/json"
+  id="bg-data"
+  set:html={JSON.stringify(Object.fromEntries(BOARD_BACKGROUNDS.map((b) => [b.id, { pattern: b.pattern, size: b.size }])))}
+></script>
+<script is:inline>
+  // Live preview for the Board appearance form.
+  const themes = JSON.parse(document.getElementById('theme-data').textContent);
+  const backgrounds = JSON.parse(document.getElementById('bg-data').textContent);
+  const themeSelect = document.getElementById('theme');
+  const bgInput = document.getElementById('background');
+
+  function applyAppearancePreview() {
+    if (!themeSelect || !bgInput) return;
+    const t = themes[themeSelect.value] ?? Object.values(themes)[0];
+    const bg = backgrounds[bgInput.value] ?? backgrounds.none;
+    document.body.style.setProperty('--page-bg', t.bg);
+    if (bg && bg.pattern !== 'none') {
+      document.body.style.setProperty('--page-pattern', bg.pattern);
+      document.body.style.setProperty('--page-pattern-size', bg.size);
+    } else {
+      document.body.style.setProperty('--page-pattern', t.pattern);
+      document.body.style.setProperty('--page-pattern-size', t.patternSize);
+    }
+  }
+
+  themeSelect?.addEventListener('change', applyAppearancePreview);
+  document.querySelectorAll('#bg-picker .bg-swatch').forEach((sw) => {
+    sw.addEventListener('click', () => {
+      document.querySelectorAll('#bg-picker .bg-swatch').forEach((s) => s.classList.remove('is-active'));
+      sw.classList.add('is-active');
+      bgInput.value = sw.dataset.bg;
+      applyAppearancePreview();
+    });
+  });
+
+  // Live-preview the title and recipient in the Manage panel as the admin types.
+  const titleInput = document.getElementById('board-title');
+  const recipientInput = document.getElementById('board-recipient');
+  const headerTitle = document.getElementById('hdr-title');
+  const headerRecipient = document.getElementById('hdr-recipient');
+  titleInput?.addEventListener('input', () => {
+    if (headerTitle) headerTitle.textContent = titleInput.value;
+  });
+  recipientInput?.addEventListener('input', () => {
+    if (headerRecipient) headerRecipient.textContent = recipientInput.value;
+  });
+</script>
+
+<script is:inline define:vars={{ editToken: board.edit_token }}>
+  document.querySelectorAll('button[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-copy');
+      const input = id ? document.getElementById(id) : null;
+      if (!input) return;
+      await navigator.clipboard.writeText(input.value);
+      const orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => (btn.textContent = orig), 1500);
+    });
+  });
+
+  // ---- Sortable masonry ----
+  const container = document.getElementById('sortable');
+  const status = document.getElementById('reorder-status');
+  let dragging = null;
+  let ghost = null;
+  let startX = 0;
+  let startY = 0;
+
+  function getItem(target) {
+    return target.closest?.('.sortable-item');
+  }
+
+  function getInsertTarget(clientX, clientY) {
+    // Find the item whose center is closest to the pointer.
+    const items = [...container.querySelectorAll('.sortable-item')].filter((el) => el !== dragging);
+    let best = null;
+    let bestDist = Infinity;
+    for (const it of items) {
+      const r = it.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const d = Math.hypot(cx - clientX, cy - clientY);
+      if (d < bestDist) { bestDist = d; best = { el: it, r, cx, cy }; }
+    }
+    return best;
+  }
+
+  function makeGhost(el, clientX, clientY) {
+    const clone = el.cloneNode(true);
+    clone.classList.add('sortable-ghost');
+    clone.style.left = clientX - 120 + 'px';
+    clone.style.top = clientY - 30 + 'px';
+    // Strip handles/buttons from interfering inside the ghost.
+    clone.querySelectorAll('.drag-handle, form').forEach((n) => n.remove());
+    document.body.appendChild(clone);
+    return clone;
+  }
+
+  async function saveOrder() {
+    const order = [...container.querySelectorAll('.sortable-item')].map((el) => el.dataset.id);
+    status.textContent = 'Saving…';
+    try {
+      const res = await fetch('/api/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ edit_token: editToken, order }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      status.textContent = '✓ Saved';
+      setTimeout(() => (status.textContent = ''), 1500);
+    } catch (err) {
+      status.textContent = 'Save failed: ' + err.message;
+    }
+  }
+
+  function onPointerDown(e) {
+    if (!e.target.classList?.contains('drag-handle')) return;
+    const item = getItem(e.target);
+    if (!item) return;
+    e.preventDefault();
+    dragging = item;
+    item.classList.add('dragging');
+    startX = e.clientX;
+    startY = e.clientY;
+    ghost = makeGhost(item, e.clientX, e.clientY);
+    e.target.setPointerCapture(e.pointerId);
+  }
+
+  function onPointerMove(e) {
+    if (!dragging || !ghost) return;
+    ghost.style.left = e.clientX - 120 + 'px';
+    ghost.style.top = e.clientY - 30 + 'px';
+
+    const t = getInsertTarget(e.clientX, e.clientY);
+    if (!t) return;
+    // Insert before or after based on whether pointer is above or below the target center.
+    if (e.clientY < t.cy) {
+      container.insertBefore(dragging, t.el);
+    } else {
+      container.insertBefore(dragging, t.el.nextSibling);
+    }
+  }
+
+  function onPointerUp() {
+    if (!dragging) return;
+    dragging.classList.remove('dragging');
+    dragging = null;
+    if (ghost) { ghost.remove(); ghost = null; }
+    saveOrder();
+  }
+
+  container?.addEventListener('pointerdown', onPointerDown);
+  container?.addEventListener('pointermove', onPointerMove);
+  container?.addEventListener('pointerup', onPointerUp);
+  container?.addEventListener('pointercancel', onPointerUp);
+</script>

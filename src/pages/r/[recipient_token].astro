@@ -1,0 +1,190 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import BoardMessages from '../../components/BoardMessages.astro';
+import { getBoardByRecipientToken, listMessages } from '../../lib/db';
+import { getEnv } from '../../lib/runtime';
+import { getBoardBackground, THEMES } from '../../lib/types';
+
+export const prerender = false;
+
+const env = getEnv(Astro);
+const { recipient_token } = Astro.params;
+const board = recipient_token ? await getBoardByRecipientToken(env.DB, recipient_token) : null;
+
+if (!board) {
+  return new Response('Board not found', { status: 404 });
+}
+
+const messages = await listMessages(env.DB, board.id, false);
+const theme = THEMES.find((t) => t.id === board.theme) ?? THEMES[0];
+const bg = getBoardBackground(board.background);
+const pageBgPattern = bg.id !== 'none' ? bg.pattern : theme.pattern;
+const pageBgSize = bg.id !== 'none' ? bg.size : theme.patternSize;
+const isPrint = Astro.url.searchParams.get('print') === '1';
+---
+
+<Layout title={board.title} bg={theme.bg} pattern={pageBgPattern} patternSize={pageBgSize} isPrint={isPrint} hideNav={true}>
+  {!isPrint && (
+    <div id="splash" class="splash" aria-hidden="true">
+      <canvas id="splash-canvas" class="splash-canvas"></canvas>
+      <div class="splash-floats" aria-hidden="true">
+        <span>🎉</span><span>💌</span><span>✨</span><span>🌟</span><span>🎈</span>
+        <span>💖</span><span>🎊</span><span>🌸</span><span>👋</span><span>🏆</span>
+      </div>
+      <div class="splash-card">
+        <p class="splash-pretitle">A surprise for you</p>
+        <h1 class="splash-title">{board.title}</h1>
+        <p class="splash-recipient">For <strong>{board.recipient}</strong></p>
+        <button type="button" class="btn splash-open" id="splash-open">Open your card →</button>
+      </div>
+    </div>
+  )}
+  <main class="container">
+    <BoardMessages
+      board={board}
+      messages={messages}
+      emptyText="No messages yet. Check back soon!"
+    />
+  </main>
+  <canvas id="celebrate-canvas" class="celebrate-canvas" aria-hidden="true"></canvas>
+</Layout>
+
+<script is:inline define:vars={{ boardId: board.id }}>
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const splash = document.getElementById('splash');
+  const openBtn = document.getElementById('splash-open');
+  const sessionKey = 'fb_splash_' + boardId;
+  const alreadySeen = sessionStorage.getItem(sessionKey) === '1';
+
+  if (!splash || alreadySeen || reduced) {
+    splash?.remove();
+    if (!reduced) requestAnimationFrame(() => burstConfetti(120, 1.0));
+  } else {
+    splash.classList.add('is-visible');
+    // Start ambient confetti behind the splash card.
+    ambientConfetti();
+  }
+
+  openBtn?.addEventListener('click', () => {
+    sessionStorage.setItem(sessionKey, '1');
+    splash.classList.add('is-leaving');
+    setTimeout(() => {
+      splash.remove();
+      burstConfetti(180, 1.2);
+    }, 600);
+  });
+
+  // -------- Vanilla canvas confetti --------
+  function burstConfetti(count, intensity) {
+    const cvs = document.getElementById('celebrate-canvas');
+    if (!cvs) return;
+    const ctx = cvs.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    function resize() {
+      cvs.width = window.innerWidth * dpr;
+      cvs.height = window.innerHeight * dpr;
+      cvs.style.width = window.innerWidth + 'px';
+      cvs.style.height = window.innerHeight + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    cvs.style.opacity = '1';
+    const colors = ['#f59e0b','#ef4444','#3b82f6','#10b981','#a855f7','#ec4899','#fbbf24'];
+    const w = window.innerWidth;
+    const particles = [];
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x: w * 0.5 + (Math.random() - 0.5) * 100,
+        y: -10,
+        vx: (Math.random() - 0.5) * 8 * intensity,
+        vy: (Math.random() * 6 + 4) * intensity,
+        size: Math.random() * 6 + 4,
+        rot: Math.random() * Math.PI,
+        vr: (Math.random() - 0.5) * 0.3,
+        color: colors[(Math.random() * colors.length) | 0],
+        shape: Math.random() < 0.5 ? 'rect' : 'circle',
+        life: 0,
+      });
+    }
+    const start = performance.now();
+    const duration = 2200;
+    function frame(now) {
+      const elapsed = now - start;
+      ctx.clearRect(0, 0, cvs.width, cvs.height);
+      for (const p of particles) {
+        p.vy += 0.18;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.rot += p.vr;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        if (p.shape === 'rect') {
+          ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+        } else {
+          ctx.beginPath();
+          ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+      if (elapsed < duration) {
+        requestAnimationFrame(frame);
+      } else {
+        ctx.clearRect(0, 0, cvs.width, cvs.height);
+        cvs.style.opacity = '0';
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // Slow drifting confetti behind the splash card while it's visible.
+  function ambientConfetti() {
+    const cvs = document.getElementById('splash-canvas');
+    if (!cvs) return;
+    const ctx = cvs.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    function resize() {
+      cvs.width = window.innerWidth * dpr;
+      cvs.height = window.innerHeight * dpr;
+      cvs.style.width = window.innerWidth + 'px';
+      cvs.style.height = window.innerHeight + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    const colors = ['#f59e0b','#ef4444','#3b82f6','#10b981','#a855f7','#ec4899','#fbbf24'];
+    const particles = Array.from({ length: 50 }, () => ({
+      x: Math.random() * window.innerWidth,
+      y: Math.random() * window.innerHeight,
+      vy: Math.random() * 0.8 + 0.4,
+      vx: (Math.random() - 0.5) * 0.6,
+      size: Math.random() * 5 + 3,
+      rot: Math.random() * Math.PI,
+      vr: (Math.random() - 0.5) * 0.04,
+      color: colors[(Math.random() * colors.length) | 0],
+    }));
+    let stopped = false;
+    function frame() {
+      if (stopped || !splash?.classList.contains('is-visible')) return;
+      ctx.clearRect(0, 0, cvs.width, cvs.height);
+      for (const p of particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.rot += p.vr;
+        if (p.y > window.innerHeight + 10) { p.y = -10; p.x = Math.random() * window.innerWidth; }
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+        ctx.restore();
+      }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+    // Stop ambient loop when splash leaves.
+    splash.addEventListener('transitionend', () => { stopped = true; }, { once: true });
+  }
+</script>

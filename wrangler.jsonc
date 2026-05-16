@@ -1,0 +1,46 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "wellspring",
+	"main": "./dist/_worker.js/index.js",
+	"compatibility_date": "2026-04-23",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"assets": {
+		"binding": "ASSETS",
+		"directory": "./dist"
+	},
+	"observability": {
+		"enabled": true
+	},
+	// D1 database. When deploying via the "Deploy to Cloudflare" button or by
+	// running ./deploy.sh, the database is provisioned and `database_id` is
+	// filled in automatically. Local operators should NOT commit their own
+	// database_id back to the repo.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "wellspring",
+			"database_id": "",
+			"migrations_dir": "migrations"
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "UPLOADS",
+			"bucket_name": "wellspring-uploads"
+		}
+	],
+	"vars": {
+		"MAX_UPLOAD_BYTES": "8388608",
+		"PUBLIC_R2_BASE_URL": "",
+		// Set these when putting the app behind Cloudflare Access. Leave blank
+		// for single-tenant mode (no auth, anyone with the URL can create boards).
+		// `scripts/setup-access.sh` can fill these in for you.
+		"ACCESS_TEAM_DOMAIN": "",
+		"ACCESS_AUD": ""
+	}
+	// To enable PDF/image export, also add a Browser Rendering binding:
+	//   "browser": { "binding": "BROWSER" }
+	// And set CF_ACCOUNT_ID + CF_API_TOKEN secrets via `scripts/setup-secrets.sh`.
+}
