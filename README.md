@@ -58,9 +58,9 @@ email header alone can't be spoofed.
 
 ### Option 1 — One-click (recommended for self-hosters)
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/YOUR_USERNAME/wellspring)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/silverfoxy/wellspring)
 
-Replace `YOUR_USERNAME` with your fork's path. Clicking the button forks the
+Replace `silverfoxy` with your fork's path. Clicking the button forks the
 repo into the user's GitHub account, provisions the D1 database and R2 bucket
 from `wrangler.jsonc`, wires up Workers Builds for CI/CD, and runs the first
 deploy.
