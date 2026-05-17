@@ -1,22 +1,12 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import { getEnv, getRequestIdentity } from '../lib/runtime';
-import { BOARD_BACKGROUNDS, THEMES } from '../lib/types';
+import { getEnv } from '../lib/runtime';
+import { THEMES } from '../lib/types';
+
 export const prerender = false;
 
 const env = getEnv(Astro);
-const identity = getRequestIdentity(Astro);
-const accessConfigured = Boolean(env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD);
-const canCreate = !accessConfigured || identity.isAdmin;
-
 const defaultTheme = THEMES[0];
-// Minimal theme map for the client-side preview script.
-const themeMap = Object.fromEntries(
-  THEMES.map((t) => [t.id, { bg: t.bg, pattern: t.pattern, patternSize: t.patternSize }]),
-);
-const bgMap = Object.fromEntries(
-  BOARD_BACKGROUNDS.map((b) => [b.id, { pattern: b.pattern, size: b.size }]),
-);
 ---
 
 <Layout
@@ -26,107 +16,15 @@ const bgMap = Object.fromEntries(
   patternSize={defaultTheme.patternSize}
 >
   <main class="container">
-    <section style="text-align:center; margin: 40px 0 32px;">
+    <section style="text-align:center; margin: 80px 0 48px;">
       <h1 style="font-size: 56px; margin: 0 0 6px; font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', serif; letter-spacing: -0.02em;">Wellspring</h1>
-      <p style="font-size: 16px; color: var(--muted); margin: 0 0 18px; letter-spacing: 0.05em; text-transform: uppercase;">a wellspring of warm words</p>
-      <p style="font-size: 18px; color: var(--ink); max-width: 640px; margin: 0 auto;">
+      <p style="font-size: 16px; color: var(--muted); margin: 0 0 20px; letter-spacing: 0.05em; text-transform: uppercase;">a wellspring of warm words</p>
+      <p style="font-size: 18px; color: var(--ink); max-width: 560px; margin: 0 auto 36px; line-height: 1.6;">
         A shared card for the people who matter. Birthdays, promotions, anniversaries,
         farewells, thank-yous — friends and teammates sign in messages, drop a photo or
         GIF, and you get a beautiful keepsake to send them.
       </p>
+      <a href="/create" class="btn" style="font-size:16px; padding:14px 32px;">Create a board →</a>
     </section>
-
-    {!canCreate && (
-      <div class="panel" style="max-width:560px; margin: 0 auto; text-align:center;">
-        <h2 style="margin-top:0;">Welcome 👋</h2>
-        <p>
-          You're signed in as <strong>{identity.email ?? 'a guest'}</strong>.
-          Only site admins can create new boards on this deployment.
-        </p>
-        <p class="muted">
-          To sign someone's card, just open the link a creator shared with you.
-        </p>
-      </div>
-    )}
-
-    {canCreate && (
-    <div class="panel" style="max-width:560px; margin: 0 auto;">
-      <h2 style="margin-top:0;">Create a new board</h2>
-      <form method="POST" action="/api/boards">
-        <label for="recipient">Who is leaving?</label>
-        <input id="recipient" name="recipient" required maxlength="80" placeholder="Alex" />
-
-        <label for="title">Board title</label>
-        <input id="title" name="title" required maxlength="120" placeholder="Congrats Alex! 🎉" />
-
-        <label for="created_by">Your name (optional)</label>
-        <input id="created_by" name="created_by" maxlength="80" placeholder="Sam" />
-
-        <label for="theme">Theme color</label>
-        <select id="theme" name="theme">
-          {THEMES.map((t) => <option value={t.id}>{t.name}</option>)}
-        </select>
-
-        <label>Background pattern</label>
-        <input type="hidden" id="background" name="background" value="none" />
-        <div id="bg-picker" class="bg-picker">
-          {BOARD_BACKGROUNDS.map((b, i) => (
-            <button
-              type="button"
-              class={`bg-swatch${i === 0 ? ' is-active' : ''}`}
-              data-bg={b.id}
-              data-pattern={b.pattern}
-              data-size={b.size}
-              title={b.label}
-              aria-label={b.label}
-              style={`--swatch-bg:${b.preview}; --swatch-pattern:${b.pattern}; --swatch-size:${b.size};`}
-            >
-              {b.id === 'none' && <span aria-hidden="true">∅</span>}
-            </button>
-          ))}
-        </div>
-
-        <div style="margin-top:20px;">
-          <button class="btn" type="submit">Create board</button>
-        </div>
-        <p class="muted" style="margin-top:12px;">
-          You'll get a share link for contributors and a private dashboard link to manage the board.
-        </p>
-      </form>
-    </div>
-    )}
   </main>
 </Layout>
-
-<script type="application/json" id="theme-data" set:html={JSON.stringify(themeMap)}></script>
-<script type="application/json" id="bg-data" set:html={JSON.stringify(bgMap)}></script>
-<script is:inline>
-  const themes = JSON.parse(document.getElementById('theme-data').textContent);
-  const backgrounds = JSON.parse(document.getElementById('bg-data').textContent);
-  const themeSelect = document.getElementById('theme');
-  const bgInput = document.getElementById('background');
-
-  function applyPreview() {
-    const t = themes[themeSelect.value] ?? Object.values(themes)[0];
-    const bg = backgrounds[bgInput.value] ?? backgrounds.none;
-    document.body.style.setProperty('--page-bg', t.bg);
-    if (bg && bg.pattern !== 'none') {
-      document.body.style.setProperty('--page-pattern', bg.pattern);
-      document.body.style.setProperty('--page-pattern-size', bg.size);
-    } else {
-      document.body.style.setProperty('--page-pattern', t.pattern);
-      document.body.style.setProperty('--page-pattern-size', t.patternSize);
-    }
-  }
-
-  themeSelect?.addEventListener('change', applyPreview);
-
-  document.querySelectorAll('.bg-swatch').forEach((sw) => {
-    sw.addEventListener('click', () => {
-      document.querySelectorAll('.bg-swatch').forEach((s) => s.classList.remove('is-active'));
-      sw.classList.add('is-active');
-      bgInput.value = sw.dataset.bg;
-      applyPreview();
-    });
-  });
-</script>

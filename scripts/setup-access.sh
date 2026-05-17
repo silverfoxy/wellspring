@@ -156,9 +156,33 @@ else
   ok "Using IdP: $selected_idp_name"
 fi
 
-# ─── 6. Create the Access application ───────────────────────────────────────
-bold "Step 1/3  Create Access application"
-app_body="$(jq -nc --arg name "Wellspring" --arg domain "$WORKER_DOMAIN" '{
+# ─── 6. Remove any existing Access apps for this domain ─────────────────────
+bold "Step 0/3  Cleaning up existing Access apps for $WORKER_DOMAIN"
+all_apps="$(cf_api GET "/accounts/$CLOUDFLARE_ACCOUNT_ID/access/apps")"
+stale_ids="$(echo "$all_apps" | jq -r --arg d "$WORKER_DOMAIN" '
+  .result[]
+  | select(.domain == $d or (.domain | startswith($d)))
+  | .id')"
+if [ -z "$stale_ids" ]; then
+  note "No existing apps found for $WORKER_DOMAIN"
+else
+  while IFS= read -r app_id; do
+    [ -z "$app_id" ] && continue
+    del_out="$(cf_api DELETE "/accounts/$CLOUDFLARE_ACCOUNT_ID/access/apps/$app_id")"
+    if [ "$(echo "$del_out" | jq -r '.success')" = "true" ]; then
+      ok "Deleted app $app_id"
+    else
+      warn "Could not delete app $app_id — $(echo "$del_out" | jq -rc '.errors')"
+    fi
+  done <<< "$stale_ids"
+fi
+
+# ─── 7. Create the /signin auth app ──────────────────────────────────────────
+bold "Step 1/3  Create Access application for /signin"
+# Only /signin requires Access auth. Everything else is bypassed, and the app
+# reads the CF_Authorization cookie directly to identify signed-in users.
+SIGNIN_DOMAIN="${WORKER_DOMAIN}/signin"
+app_body="$(jq -nc --arg name "Wellspring – sign-in ($WORKER_DOMAIN)" --arg domain "$SIGNIN_DOMAIN" '{
   name: $name,
   domain: $domain,
   type: "self_hosted",
@@ -169,37 +193,33 @@ app_body="$(jq -nc --arg name "Wellspring" --arg domain "$WORKER_DOMAIN" '{
 app_out="$(cf_api POST "/accounts/$CLOUDFLARE_ACCOUNT_ID/access/apps" "$app_body")"
 if [ "$(echo "$app_out" | jq -r '.success')" != "true" ]; then
   echo "$app_out" | jq .
-  err "Failed to create Access application"
+  err "Failed to create /signin Access application"
 fi
 APP_ID="$(echo "$app_out" | jq -r '.result.id')"
 ACCESS_AUD="$(echo "$app_out" | jq -r '.result.aud')"
-ok "Created application $APP_ID (aud=$ACCESS_AUD)"
+ok "Created /signin application $APP_ID (aud=$ACCESS_AUD)"
 
-# ─── 7. Bypass policy for /r/* ──────────────────────────────────────────────
-bold "Step 2/3  Add Bypass policy for /r/*"
-# Cloudflare app-level path is not directly settable per-policy; the modern way
-# is to scope the app to specific paths, OR add a separate bypass app for /r/*.
-# We create a second app for the bypass path with higher precedence.
-bypass_body="$(jq -nc --arg name "Wellspring (recipient bypass)" --arg domain "${WORKER_DOMAIN}/r/" '{
-  name: $name,
-  domain: $domain,
-  type: "self_hosted",
-  session_duration: "24h",
-  app_launcher_visible: false,
-  precedence: 1
+# ─── 7. Bypass the rest of the domain ───────────────────────────────────────
+bold "Step 2/3  Add Bypass policy for the public domain"
+bypass_policy='{"name":"Bypass everyone","decision":"bypass","include":[{"everyone":{}}]}'
+
+# Single bypass app for the root covers all paths not matched by /signin above.
+BYPASS_DOMAIN="$WORKER_DOMAIN/"
+bypass_body="$(jq -nc --arg name "Wellspring – public ($WORKER_DOMAIN)" --arg domain "$BYPASS_DOMAIN" '{
+  name: $name, domain: $domain, type: "self_hosted",
+  session_duration: "24h", app_launcher_visible: false, precedence: 1
 }')"
 bypass_out="$(cf_api POST "/accounts/$CLOUDFLARE_ACCOUNT_ID/access/apps" "$bypass_body")"
 if [ "$(echo "$bypass_out" | jq -r '.success')" != "true" ]; then
-  warn "Failed to create bypass app — recipients may need to log in. Continuing."
+  warn "Failed to create bypass app — continuing."
 else
-  BYPASS_APP_ID="$(echo "$bypass_out" | jq -r '.result.id')"
-  bypass_policy='{"name":"Bypass everyone","decision":"bypass","include":[{"everyone":{}}]}'
-  cf_api POST "/accounts/$CLOUDFLARE_ACCOUNT_ID/access/apps/$BYPASS_APP_ID/policies" "$bypass_policy" >/dev/null
-  ok "Bypass policy created for /r/* path"
+  bypass_id="$(echo "$bypass_out" | jq -r '.result.id')"
+  cf_api POST "/accounts/$CLOUDFLARE_ACCOUNT_ID/access/apps/$bypass_id/policies" "$bypass_policy" >/dev/null
+  ok "Bypass app created for /"
 fi
 
-# ─── 8. Allow policy on the main app ────────────────────────────────────────
-bold "Step 3/3  Add Allow policy"
+# ─── 8. Allow policy on the /signin app ─────────────────────────────────────
+bold "Step 3/3  Add Allow policy to /signin app"
 allow_policy="$(jq -nc --argjson idp "{$idp_clause}" '{
   name: "Allow signed-in users",
   decision: "allow",
@@ -210,7 +230,7 @@ if [ "$(echo "$policy_out" | jq -r '.success')" != "true" ]; then
   echo "$policy_out" | jq .
   err "Failed to create Allow policy"
 fi
-ok "Allow policy attached"
+ok "Allow policy attached to /signin"
 
 # ─── 9. Patch wrangler.jsonc ────────────────────────────────────────────────
 python3 - "$team_domain" "$ACCESS_AUD" <<'PY'
@@ -235,9 +255,10 @@ cat <<OUT
 ──────────────────────────────────────────────────────────────────────
 Cloudflare Access is now in front of Wellspring.
 
-  Protected:  https://$WORKER_DOMAIN
-  Bypass:     https://$WORKER_DOMAIN/r/*   (recipient view, no login)
+  Auth gate:  https://$WORKER_DOMAIN/signin  (triggers login, then redirects back)
+  Public:     everything else (identity read from CF_Authorization cookie)
 
-Visit the protected URL in a new tab to confirm the login screen appears.
+Visit the site — the home page should load without a login prompt.
+Sign In buttons send users to /signin, which CF Access intercepts.
 ──────────────────────────────────────────────────────────────────────
 OUT

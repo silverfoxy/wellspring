@@ -17,6 +17,10 @@ if (!board) {
 
 const messages = await listMessages(env.DB, board.id, false);
 const identity = getRequestIdentity(Astro);
+const accessConfigured = Boolean(env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD);
+const loginUrl = (accessConfigured && !identity.isAuthenticated)
+  ? `/signin?from=${encodeURIComponent(Astro.url.href)}`
+  : null;
 const theme = THEMES.find((t) => t.id === board.theme) ?? THEMES[0];
 // User-chosen board background overrides the theme's built-in pattern when set.
 const bg = getBoardBackground(board.background);
@@ -33,6 +37,22 @@ const canPost = !isPrint && !isLocked;
       <h1>{board.title}</h1>
       <div class="recipient">For {board.recipient}</div>
     </header>
+
+    {loginUrl && canPost && (
+      <div class="no-print" style="max-width: 640px; margin: 0 auto 12px; padding: 10px 16px; background: rgba(255,255,255,0.75); border-radius: 8px; text-align: center;">
+        <p class="muted" style="margin: 0; font-size: 13px;">
+          <a href={loginUrl} style="font-weight: 600;">Sign in</a> before posting if you want to delete or edit your message later.
+        </p>
+      </div>
+    )}
+
+    {accessConfigured && identity.isAuthenticated && canPost && (
+      <div class="no-print" style="max-width: 640px; margin: 0 auto 12px; padding: 10px 16px; background: rgba(255,255,255,0.75); border-radius: 8px; text-align: center;">
+        <p class="muted" style="margin: 0; font-size: 13px;">
+          Signed in as <strong>{identity.email}</strong> — you can delete your message after posting.
+        </p>
+      </div>
+    )}
 
     {canPost && (
       <section

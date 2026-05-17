@@ -37,8 +37,8 @@
 		// Set these when putting the app behind Cloudflare Access. Leave blank
 		// for single-tenant mode (no auth, anyone with the URL can create boards).
 		// `scripts/setup-access.sh` can fill these in for you.
-		"ACCESS_TEAM_DOMAIN": "pragsec.cloudflareaccess.com",
-		"ACCESS_AUD": "1503ae7258c3c7a951c92950f01217c5d78901d7edd11a545a48534214d475f2"
+		"ACCESS_TEAM_DOMAIN": "silverfoxy.cloudflareaccess.com",
+		"ACCESS_AUD": "f1e7ff2270bc72565388358b5dc9db8ee88b346bb6a1cf33f82b90e1e5da34a3"
 	},
 	// To enable PDF/image export, also add a Browser Rendering binding:
 	//   "browser": { "binding": "BROWSER" }

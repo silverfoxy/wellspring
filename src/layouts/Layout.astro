@@ -1,5 +1,4 @@
 ---
-import '../styles/global.css';
 import { getRequestIdentity, getEnv } from '../lib/runtime';
 
 interface Props {
@@ -18,7 +17,11 @@ if (patternSize) bodyStyles.push(`--page-pattern-size: ${patternSize}`);
 const bodyStyle = bodyStyles.length ? bodyStyles.join('; ') + ';' : undefined;
 const identity = getRequestIdentity(Astro);
 const env = getEnv(Astro);
-const logoutUrl = env.ACCESS_TEAM_DOMAIN ? `https://${env.ACCESS_TEAM_DOMAIN}/cdn-cgi/access/logout` : null;
+const accessConfigured = Boolean(env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD);
+const logoutUrl = accessConfigured ? '/api/logout' : null;
+const loginUrl = (accessConfigured && !identity.isAuthenticated)
+  ? `/signin?from=${encodeURIComponent(Astro.request.url)}`
+  : null;
 ---
 
 <!doctype html>
@@ -28,9 +31,8 @@ const logoutUrl = env.ACCESS_TEAM_DOMAIN ? `https://${env.ACCESS_TEAM_DOMAIN}/cd
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="stylesheet" href="/global.css" />
     <title>{title}</title>
-    <style is:global>
+    <style is:inline>
       :root {
         --ink: #1f2937;
         --muted: #6b7280;
@@ -316,6 +318,7 @@ const logoutUrl = env.ACCESS_TEAM_DOMAIN ? `https://${env.ACCESS_TEAM_DOMAIN}/cd
       .splash-floats span {
         position: absolute; font-size: 32px;
         animation: floatUp 6s linear infinite;
+        animation-fill-mode: backwards;
         opacity: 0.85;
       }
       .splash-floats span:nth-child(1) { left: 5%; animation-delay: 0s; }
@@ -391,8 +394,11 @@ const logoutUrl = env.ACCESS_TEAM_DOMAIN ? `https://${env.ACCESS_TEAM_DOMAIN}/cd
             {identity.isAdmin && (
               <a href="/admin" class="btn secondary">Dashboard</a>
             )}
-            {(!identity.email || identity.isAdmin) && (
-              <a href="/" class="btn secondary">New board</a>
+            {(identity.isAdmin || !accessConfigured) && (
+              <a href="/create" class="btn secondary">New board</a>
+            )}
+            {loginUrl && (
+              <a href={loginUrl} class="btn secondary">Sign in</a>
             )}
             {identity.email && logoutUrl && (
               <a href={logoutUrl} class="btn secondary">Sign out</a>

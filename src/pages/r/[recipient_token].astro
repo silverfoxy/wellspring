@@ -1,5 +1,4 @@
 ---
-import '../../styles/global.css';
 import Layout from '../../layouts/Layout.astro';
 import BoardMessages from '../../components/BoardMessages.astro';
 import { getBoardByRecipientToken, listMessages } from '../../lib/db';
@@ -74,8 +73,8 @@ const isPrint = Astro.url.searchParams.get('print') === '1';
     .splash-card {
       position: relative !important;
       z-index: 2 !important;
+      width: fit-content !important;
       max-width: 90vw !important;
-      width: 100% !important;
       margin: 24px !important;
       padding: 24px !important;
       text-align: center !important;

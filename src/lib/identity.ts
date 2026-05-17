@@ -123,6 +123,13 @@ function parseAdmins(raw: string | undefined): Set<string> {
   );
 }
 
+function cookieValue(request: Request, name: string): string | null {
+  const header = request.headers.get('Cookie');
+  if (!header) return null;
+  const match = header.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return match?.[1] ?? null;
+}
+
 /**
  * Resolve the identity from the incoming request. Returns an anonymous identity
  * when Access isn't configured or the JWT is missing/invalid.
@@ -136,7 +143,12 @@ export async function getIdentity(
   // No Access config — anonymous mode (back-compat with token-only flows).
   if (!teamDomain || !aud) return ANON;
 
-  const token = request.headers.get('Cf-Access-Jwt-Assertion');
+  // On bypass-policy paths CF Access strips the assertion header but the
+  // CF_Authorization cookie is still sent by the browser. Fall back to it so
+  // authenticated users are recognised on public/bypassed pages.
+  const token =
+    request.headers.get('Cf-Access-Jwt-Assertion') ||
+    cookieValue(request, 'CF_Authorization');
   if (!token) return ANON;
 
   const payload = await verifyJwt(token, teamDomain, aud);

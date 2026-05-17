@@ -1,0 +1,16 @@
+---
+export const prerender = false;
+
+// CF Access intercepts this page and requires login before it renders.
+// After auth it redirects back here, and we forward to the original destination.
+const from = Astro.url.searchParams.get('from');
+let redirectTo = '/';
+if (from) {
+  try {
+    const target = new URL(from);
+    if (target.host === Astro.url.host) redirectTo = from;
+  } catch { /* invalid URL */ }
+}
+
+return Astro.redirect(redirectTo, 302);
+---
