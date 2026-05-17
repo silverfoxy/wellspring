@@ -33,5 +33,5 @@ export function esc(s: string): string {
 
 /** Build the public URL for an R2 object. Prefer the worker proxy route. */
 export function imageUrl(key: string): string {
-  return `/r2/${encodeURIComponent(key)}`;
+  return `/r2/${key}`;
 }
