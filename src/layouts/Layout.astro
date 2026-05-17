@@ -61,7 +61,13 @@ const loginUrl = (accessConfigured && !identity.isAuthenticated)
       body > * { position: relative; z-index: 1; }
       a { color: var(--accent); }
       .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
-      .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; gap: 16px; }
+      .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; gap: 16px; flex-wrap: wrap; }
+      .nav-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
+      .nav-email { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      @media (max-width: 480px) {
+        .nav-email { max-width: 120px; }
+        .btn { padding: 8px 12px; font-size: 13px; }
+      }
       .nav a { text-decoration: none; font-weight: 600; color: var(--ink); }
       .brand { display: inline-flex; flex-direction: column; line-height: 1.1; gap: 2px; }
       .brand-name {
@@ -385,9 +391,9 @@ const loginUrl = (accessConfigured && !identity.isAuthenticated)
             <span class="brand-name">Wellspring</span>
             <span class="brand-tag">a wellspring of warm words</span>
           </a>
-          <div style="display:flex; align-items:center; gap:12px;">
+          <div class="nav-actions">
             {identity.email && (
-              <span class="muted" title={identity.isAdmin ? 'Admin' : 'Signed in'}>
+              <span class="muted nav-email" title={identity.isAdmin ? `${identity.email} (Admin)` : identity.email}>
                 {identity.isAdmin ? '★ ' : ''}{identity.email}
               </span>
             )}

@@ -2,7 +2,7 @@
 
 > *A wellspring of warm words.*
 
-A self-hosted, Kudoboard-style app for the moments that matter — birthdays,
+A self-hosted, Kudoboard-style app for the moments that matter. Birthdays,
 promotions, anniversaries, farewells, thank-yous, anything where a group wants
 to lift one person up. Runs entirely on the **Cloudflare Developer Platform**:
 
