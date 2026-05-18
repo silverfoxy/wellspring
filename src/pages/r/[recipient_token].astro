@@ -130,6 +130,10 @@ const isPrint = Astro.url.searchParams.get('print') === '1';
       gap: 16px !important;
       justify-content: center !important;
       width: 100% !important;
+      /* Constrain on ultra-wide screens so notes don't stretch edge-to-edge */
+      max-width: 1400px !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
     }
     .grid > * {
       flex: 0 0 auto !important;

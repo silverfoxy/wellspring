@@ -98,6 +98,10 @@ const loginUrl = (accessConfigured && !identity.isAuthenticated)
         flex-wrap: wrap;
         gap: 16px;
         justify-content: center;
+        /* Constrain on ultra-wide screens so notes don't stretch edge-to-edge */
+        max-width: 1400px;
+        margin-left: auto;
+        margin-right: auto;
       }
       .grid > * {
         /* Fallback: fixed width cards */

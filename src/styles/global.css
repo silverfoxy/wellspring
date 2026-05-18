@@ -46,6 +46,10 @@ a { color: var(--accent); }
   flex-wrap: wrap;
   gap: 16px;
   justify-content: center;
+  /* Constrain on ultra-wide screens so notes don't stretch edge-to-edge */
+  max-width: 1400px;
+  margin-left: auto;
+  margin-right: auto;
 }
 .grid > * {
   flex: 0 0 auto;
