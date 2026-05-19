@@ -38,12 +38,6 @@ const isPrint = Astro.url.searchParams.get('print') === '1';
     *, *::before, *::after {
       box-sizing: border-box !important;
     }
-    .container {
-      max-width: 100% !important;
-      padding: 24px 16px !important;
-      margin: 0 auto !important;
-      overflow-x: hidden !important;
-    }
     .splash {
       position: fixed !important;
       top: 0 !important;
@@ -123,22 +117,6 @@ const isPrint = Astro.url.searchParams.get('print') === '1';
       margin: 0 !important;
       font-weight: 600 !important;
       word-wrap: break-word !important;
-    }
-    .grid {
-      display: flex !important;
-      flex-wrap: wrap !important;
-      gap: 16px !important;
-      justify-content: center !important;
-      width: 100% !important;
-      /* Constrain on ultra-wide screens so notes don't stretch edge-to-edge */
-      max-width: 1400px !important;
-      margin-left: auto !important;
-      margin-right: auto !important;
-    }
-    .grid > * {
-      flex: 0 0 auto !important;
-      width: 100% !important;
-      max-width: min(280px, 100%) !important;
     }
     .note {
       padding: 18px !important;
